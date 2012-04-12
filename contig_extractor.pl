@@ -62,52 +62,79 @@ my %seqs;
 if($ARGV{'-f'}) {
     my @aux = undef;
     my ($name, $seq, $qual);
-    while (($name, $seq, $qual) = readfq($query, \@aux)) {
+    while (($name, $seq, $qual) = &readfq($query, \@aux)) {
+        if($ARGV{'-Ri'}) {
+            # perform the split according to the user
+            my @p = split(/$ARGV{'-Ri'}->{separator}/, $name);
+            $name = $p[$ARGV{'-Ri'}->{field_num}];
+        }
         $seqs{$name} = 1;
     }
 } elsif (! defined $ARGV{'-n'}) {
     while (my $line = <$query>) 
     {
+        my $name = undef;
         chomp $line;
         if($ARGV{'-l'}) {
-            list($line);
+            $name = &list($line);
         } elsif ($ARGV{'-b'}) {
-            blast($line);
+           $name = &blast($line);
         } elsif ($ARGV{'-s'}) {
             # skip header lines
             next if $line =~ /^@/;
-            sam($line);
+            $name =&sam($line);
         } elsif ($ARGV{'-m'}) {
-            mannotator("UniRef90_".$line);
+            $name =&mannotator("UniRef90_".$line);
         } else {
             next if ($line =~ /^\#/);
             last if ($line =~ /\#+FASTA/i);
-            gff($line);
+            $name =&gff($line);
+        }
+        unless(defined $name ) {
+            die "Crazy error!\n";
+        } else {
+            if($ARGV{'-Ri'}) {
+                # perform the split according to the user
+                my @p = split(/$ARGV{'-Ri'}->{separator}/, $name);
+                $name = $p[$ARGV{'-Ri'}->{field_num}];
+            }
+            $seqs{$name} = 1;
         }
     }
 } else {
     foreach my $e (@{$ARGV{'-n'}}) {
+        if($ARGV{'-Ri'}) {
+            # perform the split according to the user
+            my @p = split(/$ARGV{'-Ri'}->[0]/, $e);
+            $e = $p[$ARGV{'-Ri'}->[1]];
+        }
         $seqs{$e} = 1;
     }
 }
 close $query;
 
 my @aux = undef;
-my ($name, $seq, $qual);
+my ($name,$name2, $seq, $qual);
 foreach my $database (@{$ARGV{'-d'}}) {
     open(DB,'<',$database) or die $!;
     while (($name, $seq, $qual) = readfq(\*DB, \@aux)) 
     {
+        $name2 = $name;
+        if($ARGV{'-Rd'}) {
+            # perform the split according to the user
+            my @p = split(/$ARGV{'-Rd'}->{separator_d}/, $name);
+            $name = $p[$ARGV{'-Rd'}->{field_num_d}];
+        }
         if (exists $seqs{$name})
         {
             unless($ARGV{'-v'})
             {
-                print_seq(\$name,\$seq,\$qual, $outfile);
+                print_seq(\$name2,\$seq,\$qual, $outfile);
             }
         }
         elsif ($ARGV{'-v'})
         {
-                print_seq(\$name,\$seq,\$qual, $outfile);
+                print_seq(\$name2,\$seq,\$qual, $outfile);
         }
     }
     close DB;
@@ -171,7 +198,7 @@ sub readfq {
 
 sub list{
   	my ($line) = shift;
-	$seqs{$line} = 1;
+	return $line;
 }
 
 sub blast{
@@ -179,11 +206,11 @@ sub blast{
   my @columns = split(/\t/, $line);
   	if (exists $ARGV{'-S'})
 	{
-		$seqs{$columns[1]} = $columns[0];
+		return $columns[1];
 	}
 	else
 	{
-		$seqs{$columns[0]} = $columns[1];
+		return $columns[0];
 	}
 }
 
@@ -196,69 +223,31 @@ sub sam{
         # test whether the read is paired
         if (($c[1] & 1 ) && ($c[1] & 128)) {
             # test whether the read is the second pair
-            $seqs{$c[0]."/2"} = 1;
+            if($ARGV{'-I'}) { 
+            	return $c[0]."/2";
+            } else {
+            	return $c[0];
+            }
         } else {
-            $seqs{$c[0]."/1"} = 1;
+            if ($ARGV{'-I'}) {
+            	return $c[0]."/1";
+            } else {
+            	return $c[0];
+            }
         }
     }
 }
 sub gff {
     my ($line) = shift;
     my @c = split(/\t/, $line);
-    $seqs{$c[0]} = 1;
+    return $c[0];
 }
 sub mannotator{
     my ($line) = shift;
     my @columns = split /\^/, $line;
-    $seqs{$columns[0]} = 1;
+    return $columns[0];
 }
 
-#sub checkParams 
-#{
-#    my %options;
-#
-#    # Add any other command line options, and the code to handle them
-#    getopts( "i:d:so:c:lbShvfUg",\%options );
-#
-#    # if no arguments supplied print the usage and exit
-#    #
-#   pod2usage if (0 == (keys (%options) ));
-#
-#    # If the -h option is set, print the usage and exit
-#    #
-#    pod2usage if ($options{'h'});
-#    unless ($options{'c'}) {
-#        unless ($options{'S'} || $options{'g'} || $options{'U'} || $options{'b'} || $options{'l'} || $options{'f'} )
-#        {
-#            pod2usage('-msg' => "Please specify one of  -g -S -b -l -f -U");
-#        }
-#    }
-#    unless ($options{'d'}) {
-#        pod2usage('-msg' => "You must specify -d");
-#    }
-#    
-#    if (defined $options{'s'} && !(defined $options{'b'}))
-#    {
-#        pod2usage('-msg' => "The subject flag can only be specified with the blast flag\n");
-#    }
-#
-#    
-#    return \%options;
-#}
-
-
-#sub printAtStart {
-#print<<"EOF";
-#---------------------------------------------------------------- 
-# $0
-# Copyright (C) 2010, 2011, 2012 Connor Skennerton
-#    
-# This program comes with ABSOLUTELY NO WARRANTY;
-# This is free software, and you are welcome to redistribute it
-# under certain conditions: See the source for more details.
-#---------------------------------------------------------------- 
-#EOF
-#}
 
 __END__
 
@@ -290,7 +279,7 @@ __END__
 
 =item -d <file>
 
-file of reads where a subset needs to be extracted.  Option can be specified multiple times.
+file of reads where a subset needs to be extracted (can be FASTA or FASTQ, automatically detected).  Option can be specified multiple times.
 
 =for Euclid:
     repeatable
@@ -318,31 +307,35 @@ Output file name
 =for Euclid
     output_file.type: writable
 
-=item -l <list>
+=item -I
+
+If using read names from a sam input file, append Illumina style (/1 or /2). [Default: false]
+
+=item -l
 
 Input file is a list of identifiers, one per line
 
-=item -b <blast>
+=item -b
 
 Input file is in tabular blast format
 
-=item -s <sam>
+=item -s
 
 Input is in Sam format
 
-=item -f <fastx>
+=item -f
 
 Input is in fasta or fastq format
 
-=item -g <gff>
+=item -g
 
 Input is in gff3 format
 
-=item -m <mannotator>
+=item -m
 
 Input is a mannotator formated annotations file
 
-=item -S <subject>
+=item -S
 
 Used only when the input is in blast format; sets the subject as the list of identifiers. Default: query
 
@@ -350,19 +343,34 @@ Used only when the input is in blast format; sets the subject as the list of ide
 
 A list of sequence names to extract in the form of a space separated list
 
-=for Euclid
-    name.excludes: blast, sam, fastx, gff, mannotator, subject
-    name.excludes.error: When specifying names on the command line the input type can only be set to list
-
 =item -v
 
 Invert the match. ie extract non-matching reads
+
+=item -Ri <separator> <field_num>
+
+The header in the input file contains additional information that must be removed.
+This option takes two arguements, a separator, that can be any valid perl regular expression
+to split the input identifier and the field to be used as the key for extraction (zero indexed).
+
+=for Euclid
+    field_num.type: i
+    field_num.type.error: "Please specify an integer for the field_num"
+
+=item -Rd <separator_d> <field_num_d>
+
+The header in the database file contains additional information that can be removed.
+Specify the options the same as option -Ri above
+
+=for Euclid
+    field_num_d.type: i
+    field_num_d.type.error: "Please specify an integer for the field number"
 
 =back
 
 =head1 VERSION
 
- 0.5
+ 0.5.2
 
 =head1 DESCRIPTION
 
